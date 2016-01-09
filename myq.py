@@ -265,18 +265,20 @@ class ISY(object):
         self.var_prefix = var_prefix
         self.enabled = enabled
 
+        self.var_ids = {}
+
     def update_door(self, door):
         if not self.enabled:
             return
 
-        id, varname, init, value = self.get_var_id(door.name)
+        id, varname = self.get_var_id(door.name)
         if door.state == "Open":
             value = 1
         else:
             value = 0
-        self.set_var_state(id, door.name, varname, value)
+        self.set_var_state(id, varname, value)
 
-    def set_var_state(self, id, name, varname, value):
+    def set_var_state(self, id, varname, value):
         init, val = self.get_var_state(id)
         if value == int(val):
             LOGGER.debug('%s is already set to %s', varname, val)
@@ -309,33 +311,27 @@ class ISY(object):
     def get_var_id(self, name):
         varname = str(self.var_prefix + name.replace(" ", "_"))
 
+        if varname in self.var_ids:
+            return self.var_ids[varname], varname
+
+        LOGGER.info('Searching ISY Definitions for %s', varname)
+
         r = self.call('/rest/vars/definitions/2')
         tree = ElementTree.fromstring(r.text)
 
-        LOGGER.info('Searching ISY Definitions for %s', varname)
-        valid = False
+        var_ids = {}
         for e in tree.findall('e'):
-            if e.get('name') != varname:
-                continue
+            var_ids[e.get('name')] = e.get('id')
 
-            valid = True
-            id = e.get('id')
-            name = e.get('name')
-            break
+        self.var_ids = var_ids
 
-        if not valid:
-            raise Exception(
-                "State variable: {} not found in ISY variable list".format(
-                    varname))
+        if varname in self.var_ids:
+            LOGGER.info('State variable: %s found with ID: %s', varname, id)
+            return self.var_ids[varname], varname
 
-        # id, name = child.get('id'), child.get('name')
-        LOGGER.info('State variable: %s found with ID: %s', name, id)
-
-        init, value = self.get_var_state(id)
-        LOGGER.info(
-            'ISY Get Var ID Return id=%s varname=%s init=%s value=%s',
-            id, varname, init, value)
-        return id, varname, init, value
+        raise Exception(
+            "State variable: {} not found in ISY variable list".format(
+                varname))
 
     def call(self, url):
         try:
@@ -343,10 +339,9 @@ class ISY(object):
                 'http://' + self.host + ':' + self.port + url,
                 auth=HTTPBasicAuth(self.username, self.password))
         except requests.exceptions.RequestException as err:
-            LOGGER.error('Error getting {}: {}'.format(url, err))
-            return
+            raise Exception('Error calling ISY {}: {}'.format(url, err))
 
-        return ElementTree.fromstring(r.text)
+        return r
 
 
 def main():
@@ -446,6 +441,7 @@ def main():
                 isy.update_door(door)
                 ret = door.state
             else:
+                door.get_state()
                 door.set_state(state)
                 ret = 'OK'
 
