@@ -196,8 +196,7 @@ class Door(object):
         else:
             self.state = state
             self.changed = changed
-            self.updated = time.strftime(
-                "%a %d %b %Y %H:%M:%S", time.localtime())
+            self.updated = time.localtime()
 
     def get_id(self):
         return self.id
