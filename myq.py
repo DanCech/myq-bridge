@@ -373,7 +373,6 @@ def main():
     handler.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
     LOGGER.addHandler(handler)
 
-    # setup_log('myq')
     LOGGER.info('Starting')
 
     try:
@@ -406,7 +405,7 @@ def main():
 
     def make_error(e):
         return make_response(
-            {'error': str(e), 'code': getattr(e, 'code')}, 200)
+            {'error': str(e), 'code': getattr(e, 'code')}, 500)
 
     @app.route('/doors/')
     def doors_status():
@@ -415,7 +414,7 @@ def main():
             for id, door in myq.get_doors(True).items():
                 LOGGER.info(
                     '%s is %s. Last changed at %s',
-                    door.name, door.state, door.changed)
+                    door.name, door.state, door.format_changed)
 
                 isy.update_door(door)
 
@@ -439,7 +438,7 @@ def main():
 
             LOGGER.info(
                 '%s is %s. Last changed at %s',
-                door.name, door.state, door.changed)
+                door.name, door.state, door.format_changed)
 
             isy.update_door(door)
 
