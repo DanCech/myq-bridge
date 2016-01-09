@@ -50,23 +50,6 @@ requests.packages.urllib3.disable_warnings()
 LOGGER = logging.getLogger(__name__)
 
 
-class SensorLogger(object):
-    """ Logger Class """
-    def __init__(self, logger, level):
-        """Needs a logger and a logger level."""
-        self.logger = logger
-        self.level = level
-
-    def write(self, logmessage):
-        """ Only log if there is a message (not just a new line) """
-        if logmessage.rstrip() != "":
-            self.logger.log(self.level, logmessage.rstrip())
-
-    def read(self, logmessage):
-        """" Does nothing, pylist complained """
-        pass
-
-
 class MyQ(object):
     # Do not change this is the URL for the MyQ API
     SERVICE = 'https://myqexternal.myqdevice.com'
@@ -405,7 +388,7 @@ def main():
 
     def make_error(e):
         return make_response(
-            {'error': str(e), 'code': getattr(e, 'code')}, 500)
+            {'error': str(e), 'code': getattr(e, 'code', None)}, 500)
 
     @app.route('/doors/')
     def doors_status():
