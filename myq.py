@@ -73,7 +73,7 @@ class MyQ(object):
             if door.name == name or door.id == name:
                 return door
 
-        raise MyQException('Door not found', 3)
+        raise MyQException('Door {} not found'.format(name), 3)
 
     def get_token(self):
         if self.token_expiry > time.time():
@@ -231,12 +231,6 @@ class Door(object):
         else:
             raise MyQException('Invalid state specified', 7)
 
-        if self.state == 'Open' and desired_state == 1:
-            raise MyQException(self.name + ' already open.', 5)
-
-        if self.state == 'Closed' and desired_state == 0:
-            raise MyQException(self.name + ' already closed.', 6)
-
         self.myq.put(
             '/api/deviceattribute/putdeviceattribute',
             {
@@ -244,6 +238,8 @@ class Door(object):
                 'DeviceId': self.id,
                 'AttributeValue': desired_state,
             })
+
+        self.get_state()
 
         return True
 
@@ -408,10 +404,10 @@ def main():
         except Exception as e:
             return make_error(e)
 
-    @app.route('/doors/<string:doorname>')
+    @app.route('/doors/<doorname>')
     def door_status(doorname):
         try:
-            door = myq.get_door(doorname)
+            door = myq.get_door(doorname.replace('+',' '))
             door.get_state()
 
             LOGGER.info(
@@ -432,10 +428,10 @@ def main():
         except Exception as e:
             return make_error(e)
 
-    @app.route('/doors/<string:doorname>/<string:state>')
+    @app.route('/doors/<doorname>/<state>')
     def door_handler(doorname, state):
         try:
-            door = myq.get_door(doorname)
+            door = myq.get_door(doorname.replace('+',' '))
             if state == 'status':
                 door.get_state()
                 isy.update_door(door)
