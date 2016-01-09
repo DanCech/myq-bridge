@@ -462,7 +462,11 @@ def main():
         LOGGER.error(e)
         return 1
 
-    app.run()
+    app.run(
+        host=config.get('Flask', 'host'),
+        port=config.getint('Flask', 'port'),
+        debug=config.getboolean('Flask', 'debug'),
+    )
     return 0
 
 if __name__ == '__main__':
