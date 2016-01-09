@@ -225,8 +225,16 @@ class Door(object):
 
     def set_state(self, desired_state):
         if desired_state.lower() == 'close':
+            if self.state in ['Closed', 'Closing']:
+                raise MyQException(
+                    '{} already {}.'.format(self.name, self.state), 6)
+
             desired_state = 0
         elif desired_state.lower() == 'open':
+            if self.state in ['Open', 'Opening']:
+                raise MyQException(
+                    '{} already {}.'.format(self.name, self.state), 6)
+
             desired_state = 1
         else:
             raise MyQException('Invalid state specified', 7)
@@ -282,13 +290,14 @@ class ISY(object):
 
         r = self.call('/rest/vars/set/2/' + id + '/' + str(value))
 
+        if int(r.status_code) == 404:
+            LOGGER.error('%s not found on ISY. Response was 404', id)
+            return False
+
         if int(r.status_code) != 200:
-            if int(r.status_code) == 404:
-                LOGGER.error('%s not found on ISY. Response was 404', id)
-            else:
-                LOGGER.error(
-                    'Status change failed, response from ISY: %s - %s',
-                    r.status_code, r.text)
+            LOGGER.error(
+                'Status change failed, response from ISY: %s - %s',
+                r.status_code, r.text)
             return False
 
         LOGGER.info('%s changed successfully to %s', varname, value)
@@ -432,12 +441,17 @@ def main():
     def door_handler(doorname, state):
         try:
             door = myq.get_door(doorname.replace('+',' '))
+
+            door.get_state()
+            isy.update_door(door)
+
+            LOGGER.info(
+                '%s is %s. Last changed at %s',
+                door.name, door.state, door.format_changed)
+
             if state == 'status':
-                door.get_state()
-                isy.update_door(door)
                 ret = door.state
             else:
-                door.get_state()
                 door.set_state(state)
                 ret = 'OK'
 
