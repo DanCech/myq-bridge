@@ -105,11 +105,26 @@ class MyQ(object):
             # Doors == 2, Gateway == 1, Structure == 10, Thermostat == 11
             if device['MyQDeviceTypeId'] == 2:
                 id = device['DeviceId']
+
+                name = None
+                state = None
+                changed = None
+
+                for attr in device['Attributes']:
+                    if attr['Name'] == 'desc':
+                        name = attr['Value']
+                    elif attr['Name'] == 'doorstate':
+                        changed = time.localtime(
+                            float(attr['UpdatedTime']) / 1000.0)
+
+                        state = Door.STATES[int(attr['Value'])]
+
                 if id in self.doors:
                     doors[id] = self.doors[id]
-                    doors[id].get_state()
+                    doors[id].update_name(name)
+                    doors[id].update_state(state, changed)
                 else:
-                    doors[id] = Door(self, id)
+                    doors[id] = Door(self, id, name, state, changed)
 
         self.doors = doors
 
@@ -121,12 +136,18 @@ class MyQ(object):
         payload['ApplicationId'] = self.APPID
         payload['SecurityToken'] = self.get_token()
 
+        if LOGGER.isEnabledFor(logging.DEBUG):
+            LOGGER.debug('PUT ' + url + ' Request: ' + self.logdata(payload))
+
         try:
             r = requests.put(put_url, data=payload)
         except requests.exceptions.RequestException as err:
             raise MyQException('Caught Exception: ' + err, 2)
 
         data = r.json()
+
+        LOGGER.debug('PUT ' + url + ' Response: ' + self.logdata(data))
+
         if data['ReturnCode'] != '0':
             raise MyQException(data['ErrorMessage'], 1)
 
@@ -141,16 +162,29 @@ class MyQ(object):
         params['appId'] = self.APPID
         params['securityToken'] = token
 
+        if LOGGER.isEnabledFor(logging.DEBUG):
+            LOGGER.debug('GET ' + url + ' Request: ' + self.logdata(params))
+
         try:
             r = requests.get(get_url, params=params)
         except requests.exceptions.RequestException as err:
             raise MyQException('Caught Exception: ' + err, 2)
 
         data = r.json()
+
+        LOGGER.debug('GET ' + url + ' Response: ' + self.logdata(data))
+
         if data['ReturnCode'] != '0':
             raise MyQException(data['ErrorMessage'], 1)
 
         return data
+
+    def logdata(self, params):
+        protect = ['password', 'securityToken', 'SecurityToken']
+        return json.dumps({
+            x: (y if x not in protect else '***')
+            for x, y in params.items()
+        }, sort_keys=True, indent=2)
 
 
 class Door(object):
@@ -169,49 +203,37 @@ class Door(object):
         self.myq = myq
         self.id = id
 
+        self.update_name(name)
+        self.update_state(state, changed)
+
+    def update_name(self, name=None):
         if name is None:
-            self.get_name()
-        else:
-            self.name = name
+            data = self.myq.get(
+                '/Device/getDeviceAttribute',
+                {
+                    'devId': self.id,
+                    'name': 'desc',
+                })
 
+            name = data['AttributeValue']
+
+        self.name = name
+
+    def update_state(self, state=None, changed=None):
         if state is None or changed is None:
-            self.get_state()
-        else:
-            self.state = state
-            self.changed = changed
-            self.updated = time.localtime()
+            data = self.myq.get(
+                '/Device/getDeviceAttribute',
+                {
+                    'devId': self.id,
+                    'name': 'doorstate',
+                })
 
-    def get_id(self):
-        return self.id
+            state = self.STATES[int(data['AttributeValue'])]
+            changed = time.localtime(float(data['UpdatedTime']) / 1000.0)
 
-    def get_name(self):
-        data = self.myq.get(
-            '/Device/getDeviceAttribute',
-            {
-                'devId': self.id,
-                'name': 'desc',
-            })
-
-        self.name = data['AttributeValue']
-
-        return self.name
-
-    def get_state(self):
-        data = self.myq.get(
-            '/Device/getDeviceAttribute',
-            {
-                'devId': self.id,
-                'name': 'doorstate',
-            })
-
-        timestamp = float(data['UpdatedTime'])
-        timestamp = time.localtime(timestamp / 1000.0)
-
-        self.state = self.STATES[int(data['AttributeValue'])]
-        self.changed = timestamp
+        self.state = state
+        self.changed = changed
         self.updated = time.localtime()
-
-        return self.state, self.changed
 
     @property
     def format_changed(self):
@@ -247,7 +269,7 @@ class Door(object):
                 'AttributeValue': desired_state,
             })
 
-        self.get_state()
+        self.update_state()
 
         return True
 
@@ -362,6 +384,10 @@ def main():
         config = RawConfigParser()
         config.read('myq.cfg')
 
+        if (config.has_option('MyQ', 'debug')
+                and config.getboolean('MyQ', 'debug')):
+            LOGGER.setLevel(logging.DEBUG)
+
         myq = MyQ(
             config.get('MyQ', 'username'),
             config.get('MyQ', 'password'),
@@ -416,8 +442,8 @@ def main():
     @app.route('/doors/<doorname>')
     def door_status(doorname):
         try:
-            door = myq.get_door(doorname.replace('+',' '))
-            door.get_state()
+            door = myq.get_door(doorname.replace('+', ' '))
+            door.update_state()
 
             LOGGER.info(
                 '%s is %s. Last changed at %s',
@@ -440,9 +466,9 @@ def main():
     @app.route('/doors/<doorname>/<state>')
     def door_handler(doorname, state):
         try:
-            door = myq.get_door(doorname.replace('+',' '))
+            door = myq.get_door(doorname.replace('+', ' '))
 
-            door.get_state()
+            door.update_state()
             isy.update_door(door)
 
             LOGGER.info(
