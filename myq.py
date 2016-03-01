@@ -102,8 +102,12 @@ class MyQ(object):
         data = self.get('/api/UserDeviceDetails')
 
         for device in data['Devices']:
-            # Doors == 2, Gateway == 1, Structure == 10, Thermostat == 11
-            if device['MyQDeviceTypeId'] == 2:
+            # Gateway            == 1
+            # Garage Door Opener == 2
+            # VGDO               == 7
+            # Structure          == 10
+            # Thermostat         == 11
+            if device['MyQDeviceTypeId'] in [2, 7]:
                 id = device['DeviceId']
 
                 name = None
@@ -217,7 +221,7 @@ class Door(object):
 
             name = data['AttributeValue']
 
-        self.name = name
+        self.name = name if name else self.id
 
     def update_state(self, state=None, changed=None):
         if state is None or changed is None:
