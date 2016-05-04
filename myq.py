@@ -120,8 +120,7 @@ class MyQ(object):
                     elif attr['Name'] == 'doorstate':
                         changed = time.localtime(
                             float(attr['UpdatedTime']) / 1000.0)
-
-                        state = Door.STATES[int(attr['Value'])]
+                        state = int(attr['Value'])
 
                 if id in self.doors:
                     doors[id] = self.doors[id]
@@ -232,8 +231,15 @@ class Door(object):
                     'name': 'doorstate',
                 })
 
-            state = self.STATES[int(data['AttributeValue'])]
+            state = int(data['AttributeValue'])
             changed = time.localtime(float(data['UpdatedTime']) / 1000.0)
+
+        if type(state) == int:
+            try:
+                state = self.STATES[state]
+            except IndexError:
+                LOGGER.debug('Invalid door state "{}" for door {}'.format(state, self.name))
+                state = 'Unknown'
 
         self.state = state
         self.changed = changed
