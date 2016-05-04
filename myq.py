@@ -238,7 +238,7 @@ class Door(object):
             try:
                 state = self.STATES[state]
             except IndexError:
-                LOGGER.debug('Invalid door state "{}" for door {}'.format(state, self.name))
+                LOGGER.error('Invalid door state "{}" for door {}'.format(state, self.name))
                 state = 'Unknown'
 
         self.state = state
@@ -385,7 +385,7 @@ def main():
     LOGGER.setLevel(logging.INFO)
 
     handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
+    handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
     LOGGER.addHandler(handler)
 
     LOGGER.info('Starting')
