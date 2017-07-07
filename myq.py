@@ -173,7 +173,11 @@ class MyQ(object):
         except requests.exceptions.RequestException as err:
             raise MyQException('Caught Exception: ' + err, 2)
 
-        data = r.json()
+        try:
+            data = r.json()
+        except Exception as err:
+            LOGGER.error('GET ' + url + ' Response: ' + r.text)
+            raise MyQException('Error parsing JSON', 2)
 
         LOGGER.debug('GET ' + url + ' Response: ' + self.logdata(data))
 
