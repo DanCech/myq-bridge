@@ -56,7 +56,7 @@ class MyQ(object):
 
     # Do not change the APPID or CULTURE this is global for the MyQ API
     APPID = \
-        'Vj8pQggXLhLy0WHahglCD4N1nAkkXQtGYpq2HrHD7H1nvmbT55KqtN6RSF4ILB%2fi'
+        'NWknvuBd7LoFHfXmKNMBcgajXtZEgKUh4V7WNzMidrpUUluDpVYVZx+xT4PCM5Kx'
     CULTURE = 'en'
 
     def __init__(self, username, password):
@@ -79,12 +79,11 @@ class MyQ(object):
         if self.token_expiry > time.time():
             return self.token
 
-        data = self.get(
-            '/Membership/ValidateUserWithCulture',
+        data = self.post(
+            '/api/v4/User/Validate',
             {
                 'username': self.username,
                 'password': self.password,
-                'culture': self.CULTURE,
             },
             token='null')
 
@@ -99,7 +98,7 @@ class MyQ(object):
 
         doors = {}
 
-        data = self.get('/api/UserDeviceDetails')
+        data = self.get('/api/v4/UserDeviceDetails/Get', {'filterOn': 'true'})
 
         for device in data['Devices']:
             # Gateway            == 1
@@ -108,16 +107,16 @@ class MyQ(object):
             # Structure          == 10
             # Thermostat         == 11
             if device['MyQDeviceTypeId'] in [2, 7]:
-                id = device['DeviceId']
+                id = device['MyQDeviceId']
 
                 name = None
                 state = None
                 changed = None
 
                 for attr in device['Attributes']:
-                    if attr['Name'] == 'desc':
+                    if attr['AttributeDisplayName'] == 'desc':
                         name = attr['Value']
-                    elif attr['Name'] == 'doorstate':
+                    elif attr['AttributeDisplayName'] == 'doorstate':
                         changed = time.localtime(
                             float(attr['UpdatedTime']) / 1000.0)
                         state = int(attr['Value'])
@@ -136,14 +135,21 @@ class MyQ(object):
     def put(self, url, payload):
         put_url = self.SERVICE + url
 
-        payload['ApplicationId'] = self.APPID
-        payload['SecurityToken'] = self.get_token()
+        headers = {
+            'Content-Type': 'application/json',
+            'User-Agent': 'Chamberlain/3.61.1 (iPhone; iOS 10.0.1; Scale/2.00)',
+            'ApiVersion': '4.1',
+            'BrandId': '2',
+            'Culture': self.CULTURE,
+            'MyQApplicationId': self.APPID,
+            'SecurityToken': self.get_token(),
+        }
 
         if LOGGER.isEnabledFor(logging.DEBUG):
-            LOGGER.debug('PUT ' + url + ' Request: ' + self.logdata(payload))
+            LOGGER.debug('PUT ' + url + ' Params: ' + self.logdata(payload) + ' Headers: ' + self.logdata(headers))
 
         try:
-            r = requests.put(put_url, data=payload)
+            r = requests.put(put_url, data=json.dumps(payload), headers=headers)
         except requests.exceptions.RequestException as err:
             raise MyQException('Caught Exception: ' + err, 2)
 
@@ -156,20 +162,24 @@ class MyQ(object):
 
         return data
 
-    def get(self, url, params={}, token=None):
-        if token is None:
-            token = self.get_token()
-
+    def get(self, url, params={}):
         get_url = self.SERVICE + url
 
-        params['appId'] = self.APPID
-        params['securityToken'] = token
+        headers = {
+            'Content-Type': 'application/json',
+            'User-Agent': 'Chamberlain/3.61.1 (iPhone; iOS 10.0.1; Scale/2.00)',
+            'ApiVersion': '4.1',
+            'BrandId': '2',
+            'Culture': self.CULTURE,
+            'MyQApplicationId': self.APPID,
+            'SecurityToken': self.get_token(),
+        }
 
         if LOGGER.isEnabledFor(logging.DEBUG):
-            LOGGER.debug('GET ' + url + ' Request: ' + self.logdata(params))
+            LOGGER.debug('GET ' + url + ' Params: ' + self.logdata(params) + ' Headers: ' + self.logdata(headers))
 
         try:
-            r = requests.get(get_url, params=params)
+            r = requests.get(get_url, params=params, headers=headers)
         except requests.exceptions.RequestException as err:
             raise MyQException('Caught Exception: ' + err, 2)
 
@@ -180,6 +190,45 @@ class MyQ(object):
             raise MyQException('Error parsing JSON', 2)
 
         LOGGER.debug('GET ' + url + ' Response: ' + self.logdata(data))
+
+        if data['ReturnCode'] != '0':
+            raise MyQException(data['ErrorMessage'], 1)
+
+        return data
+
+    def post(self, url, params={}, token=None):
+        if token is None:
+            token = self.get_token()
+
+        post_url = self.SERVICE + url
+
+        headers = {
+          'Content-Type': 'application/json',
+          'User-Agent': 'Chamberlain/3.61.1 (iPhone; iOS 10.0.1; Scale/2.00)',
+          'ApiVersion': '4.1',
+          'BrandId': '2',
+          'Culture': self.CULTURE,
+          'MyQApplicationId': self.APPID,
+        }
+
+        if token != 'null':
+          headers['SecurityToken'] = token
+
+        if LOGGER.isEnabledFor(logging.DEBUG):
+            LOGGER.debug('POST ' + url + ' Params: ' + self.logdata(params) + ' Headers: ' + self.logdata(headers))
+
+        try:
+            r = requests.post(post_url, data=json.dumps(params), headers=headers)
+        except requests.exceptions.RequestException as err:
+            raise MyQException('Caught Exception: ' + err, 2)
+
+        try:
+            data = r.json()
+        except Exception as err:
+            LOGGER.error('POST ' + url + ' Response: ' + r.text)
+            raise MyQException('Error parsing JSON', 2)
+
+        LOGGER.debug('POST ' + url + ' Response: ' + self.logdata(data))
 
         if data['ReturnCode'] != '0':
             raise MyQException(data['ErrorMessage'], 1)
@@ -216,10 +265,10 @@ class Door(object):
     def update_name(self, name=None):
         if name is None:
             data = self.myq.get(
-                '/Device/getDeviceAttribute',
+                '/api/v4/DeviceAttribute/GetDeviceAttribute',
                 {
-                    'devId': self.id,
-                    'name': 'desc',
+                    'MyQDeviceId': self.id,
+                    'AttributeName': 'desc',
                 })
 
             name = data['AttributeValue']
@@ -229,10 +278,10 @@ class Door(object):
     def update_state(self, state=None, changed=None):
         if state is None or changed is None:
             data = self.myq.get(
-                '/Device/getDeviceAttribute',
+                '/api/v4/DeviceAttribute/GetDeviceAttribute',
                 {
-                    'devId': self.id,
-                    'name': 'doorstate',
+                    'MyQDeviceId': self.id,
+                    'AttributeName': 'doorstate',
                 })
 
             state = int(data['AttributeValue'])
@@ -276,10 +325,10 @@ class Door(object):
             raise MyQException('Invalid state specified', 7)
 
         self.myq.put(
-            '/api/deviceattribute/putdeviceattribute',
+            '/api/v4/DeviceAttribute/PutDeviceAttribute',
             {
                 'AttributeName': 'desireddoorstate',
-                'DeviceId': self.id,
+                'MyQDeviceId': self.id,
                 'AttributeValue': desired_state,
             })
 
